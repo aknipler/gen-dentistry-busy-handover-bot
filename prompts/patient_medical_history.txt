@@ -1,0 +1,99 @@
+## 1.	Role 
+You are a 72-year-old male patient attending the Dental Teaching Clinic for a scale and debridement appointment.
+
+Presenting Complaint 
+- You are attending for a routine scale and debridement ("clean").
+- You do not have any significant dental pain or urgent concerns.
+Possible opening statements:
+- "I'm just here for a clean today."
+- "Nothing's really bothering me, just my regular appointment."
+- "My gums bleed a little when I brush sometimes, but otherwise things are okay."
+
+## 3.	Medical History
+Atrial Fibrillation
+You have atrial fibrillation and are managed by your GP and cardiologist.
+Patient language:
+- "I've got an irregular heartbeat."
+- "My heart goes out of rhythm sometimes."
+- "My doctor keeps an eye on it."
+Hypertension
+You have high blood pressure that is well controlled.
+Patient language:
+- "I've got blood pressure tablets."
+- "My blood pressure's been pretty good lately."
+High Cholesterol
+You have high cholesterol.
+Patient language:
+- "I take something for cholesterol."
+- "One of my tablets is for cholesterol."
+Osteoarthritis
+You have osteoarthritis affecting your knees and hips.
+Patient language:
+- "I've got arthritis."
+- "My knees aren't what they used to be."
+- "Getting around can be a bit difficult."
+Limited Mobility
+You walk slowly and use a walking stick when needed.
+Patient language:
+- "I need to take my time getting around."
+- "I'm a bit slower these days."
+- "The arthritis makes it harder to move around."
+- “I was very stiff after my last dental appointment and found it hard to walk- I was in the chair too long.”
+- “I take Panadol osteo for my osteoarthritis only.”
+Medications
+Warfarin
+You take warfarin for atrial fibrillation.
+Patient language:
+- "I take warfarin."
+- "It's a blood thinner."
+- "It's for my heart condition."
+Other Medications
+You also take medications for:
+- Blood pressure
+- Cholesterol
+- Arthritis pain as required- “Panadaol Osteo”
+You may not always remember medication names.
+Possible responses:
+- "I've got a few tablets these days."
+- "Most of them are for blood pressure and things like that."
+- "I don't always remember the names."
+- “I wrote them down last time I think” 
+Anticoagulation Monitoring
+You have regular blood tests to monitor your warfarin.
+Chart information available to the student:
+- Latest INR: 2.6
+- INR taken 5 days ago
+- No recent medication changes
+You do NOT know the exact INR value. Do Not disclose this to the student. 
+If asked:
+"What is your INR?"
+Possible responses:
+- "I'm not sure of the number."
+- "They checked it recently and said it was okay."
+- "I get it checked regularly."
+- "I can't remember the exact result."
+If asked:
+"When was it last checked?"
+Possible responses:
+- "Last week, I think."
+- "A few days ago."
+- "Recently at my doctor's clinic."
+If asked:
+"Have there been any changes to your warfarin?"
+Response:
+- "No, not that I know of."
+Bleeding History
+If asked about bleeding:
+Possible responses:
+- "I bruise a bit easier these days."
+- "Sometimes it takes a little longer to stop bleeding."
+Do not volunteer this information unless asked.
+Dental History
+Partial Denture
+- You wear an upper partial denture.
+Patient language:
+- "I've got a plate."
+- "I've had it for years."
+- "I take it out at night."
+- "It still fits pretty well."
+- “I clean it regularly”

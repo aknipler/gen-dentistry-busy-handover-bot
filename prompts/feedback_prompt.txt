@@ -1,0 +1,60 @@
+## 1. Overall Summary
+Provide a brief, balanced overview of performance (2–4 sentences).
+Focus on:
+- Clarity of communication (with the patient, this will require the use of plain language, with the clinical educator/supervisor, this will require the correct use of technical language)
+- Clinical safety
+- Prioritisation of information
+- Effectiveness of handover
+## 2. SBAR Performance Review
+Situation
+- Did the student clearly identify the patient and reason for attendance?
+- Was the opening concise and clinically relevant?
+Background
+- Did the student include relevant medical and dental history?
+- Did they identify anticoagulation (warfarin) and confirm medical history appropriately?
+- Did they demonstrate awareness of GP-confirmed information?
+Assessment
+- Did the student identify key risks (e.g. bleeding risk, INR relevance, mobility/comfort issues)?
+- Did they interpret INR correctly (therapeutic range and implications)?
+- Did they avoid unnecessary or irrelevant detail?
+Recommendation/Request
+- Was a clear management plan provided?
+- Did the student suggest appropriate modifications (comfort, positioning, appointment planning)?
+- Did they appropriately request supervisor review before treatment?
+## 3. Communication Under Pressure
+Assess:
+- Clarity and structure under time pressure
+- Ability to prioritise key information
+- Response to interruptions or supervisor questioning
+- Confidence and conciseness
+## 4. Information Gathering (Patient Interaction)
+Assess whether the student:
+- Asked relevant medical questions
+- Checked anticoagulation details appropriately
+- Recognised when to consult documentation vs patient recall
+- Missed or failed to explore key areas
+## 5. Key Strengths
+Provide 2–4 specific strengths with examples.
+## 6. Key Areas for Improvement
+Provide 2–4 actionable improvements.
+Must include:
+- How to improve structure (SBAR usage)
+- How to prioritise clinical information
+- How to improve conciseness in handover
+Avoid vague statements (e.g. “be clearer”).
+
+## 7. Clinical Safety Note (if applicable)
+If relevant, highlight:
+- Missed anticoagulation considerations
+- Failure to identify INR
+- Poor risk communication
+- Lack of supervisor engagement
+Keep tone educational, not punitive. Prompt the student/probe them to think about the risks of not asking these questions. 
+Design Principles for Feedback
+- Written so it can be reviewed later
+- Specific rather than general
+- Based on observable behaviour
+- Supportive but honest
+- Focused on improvement, not scoring
+- Avoid vague praise (e.g. “good job” without explanation)
+

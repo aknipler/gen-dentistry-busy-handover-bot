@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin: 0; height: 100%; background: transparent;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; gap: 14px; }
+  #wave { width: 100%; max-width: 640px; height: 160px; }
+  #status { font-size: 14px; color: #6b7280; letter-spacing: .02em; }
+  #enable { display: none; padding: 10px 18px; font-size: 15px; cursor: pointer;
+    border: 0; border-radius: 999px; background: #2563eb; color: #fff; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="wave" width="640" height="160"></canvas>
+    <div id="status">Connecting…</div>
+    <button id="enable">Tap to enable audio</button>
+    <audio id="botAudio" autoplay></audio>
+  </div>
+<script>
+const statusEl = document.getElementById("status");
+const enableBtn = document.getElementById("enable");
+const botAudio = document.getElementById("botAudio");
+const canvas = document.getElementById("wave");
+const ctx = canvas.getContext("2d");
+
+function setStatus(t) { statusEl.textContent = t; }
+
+// Draw a live waveform of whatever audio is on the given analyser. When the bot
+// is silent the line is flat; when it speaks the line moves.
+function drawWaveform(analyser) {
+  const buf = new Uint8Array(analyser.fftSize);
+  function frame() {
+    requestAnimationFrame(frame);
+    analyser.getByteTimeDomainData(buf);
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#2563eb";
+    ctx.beginPath();
+    const slice = w / buf.length;
+    for (let i = 0; i < buf.length; i++) {
+      const y = (buf[i] / 128.0) * (h / 2);
+      const x = i * slice;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  frame();
+}
+
+function attachBotAudio(stream) {
+  // Attach to an <audio> element (required for WebRTC audio to flow into
+  // WebAudio on Chrome) and also tap it with an analyser for the waveform.
+  botAudio.srcObject = stream;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioCtx();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);  // analyser only; playback comes from <audio>
+  drawWaveform(analyser);
+
+  const resume = () => { audioCtx.resume(); botAudio.play().catch(() => {}); };
+  botAudio.play().then(() => { setStatus("🎙 Listening"); }).catch(() => {
+    // Autoplay blocked - surface a one-tap enable button.
+    setStatus("");
+    enableBtn.style.display = "inline-block";
+    enableBtn.onclick = () => { resume(); enableBtn.style.display = "none";
+      setStatus("🎙 Listening"); };
+  });
+}
+
+function waitForIce(pc) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    const check = () => {
+      if (pc.iceGatheringState === "complete") {
+        pc.removeEventListener("icegatheringstatechange", check);
+        resolve();
+      }
+    };
+    pc.addEventListener("icegatheringstatechange", check);
+    setTimeout(resolve, 2000);  // localhost gathers instantly; cap just in case
+  });
+}
+
+async function start() {
+  try {
+    const pc = new RTCPeerConnection();
+    pc.ontrack = (e) => attachBotAudio(e.streams[0]);
+    pc.onconnectionstatechange = () => {
+      if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+        setStatus("Disconnected");
+      }
+    };
+
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitForIce(pc);
+
+    const res = await fetch("/api/offer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: pc.localDescription.sdp,
+        type: pc.localDescription.type,
+      }),
+    });
+    if (!res.ok) throw new Error("offer failed: " + res.status);
+    await pc.setRemoteDescription(await res.json());
+    setStatus("🎙 Listening");
+  } catch (err) {
+    setStatus("Error: " + err.message);
+  }
+}
+
+start();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+.streamlit/
+.venv/
+venv/
+.env
+secrets.toml
+*.csv
+__pycache__/
+# Voice bot runtime logs
+logs/
+*.log
+
+*moshi.pdf
+**/*context.md
+
+build/
