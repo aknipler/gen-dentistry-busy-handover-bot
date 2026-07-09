@@ -1,173 +1,88 @@
-import streamlit as st
-from Home import setup
-from pathlib import Path
-from utils.mongodb import log_transcript
-from anthropic import Anthropic
 
+import streamlit as st
+import time
+from datetime import datetime, timezone
+
+from Home import setup
+from utils.mongodb import get_latest_transcript_since
+from utils.voice_bot_launcher import (
+    BOT_HOST,
+    ensure_voice_bot_process,
+    request_voice_bot_hangup_async,
+    stop_voice_bot_process,
+    finish_voice_handover,
+    initialise_voice_bot_page,
+)
+from utils.streamlit_utils import render_timer_panel, computer_screen_display
+
+# The voice bot runs as a SEPARATE process (a Pipecat WebRTC server), not inside
+# Streamlit. The browser connects to it directly to reach the microphone; this
+# page just launches that process and embeds its prebuilt client UI.
+
+
+client = setup()
+
+PAGE_INIT_KEY = "patient_interaction"
+initialise_voice_bot_page(PAGE_INIT_KEY)
+
+
+# --- Start ---
 
 if not bool(st.session_state.get("user_identifier", "").strip()):
     st.error("Please enter your identifier on the Home page before starting the conversation.")
     st.stop()
 
-MAXIMUM_RESPONSES = 1000
-
-client = setup()
-avatar_image_path = None
-# avatar_image_path = Path(__file__).parent / "images" / "Patient Icon.png"
-
 st.title("Patient Assessment")
 
-screen_css = """
-<style>
-    /* 1. Target ONLY the top-level block holding your unique key wrapper */
-    .st-key-computer_screen {
-        background-color: #2b2b2b !important;
-        padding: 24px !important;
-        border-radius: 25px !important;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.7), inset 0 0 15px rgba(0,0,0,0.6) !important;
-        max-width: 800px;
-        margin: 20px auto !important;
-        position: relative;
-    }
-    
-    /* 2. Target ONLY the inner direct scrollable block of this specific container */
-    .st-key-computer_screen > div[data-testid="stContainerBlock"] {
-        background-color: #121212 !important;
-        border: 14px solid #1a1a1a !important; /* Thick screen bezel */
-        border-radius: 12px !important;
-        box-shadow: inset 0 0 20px rgba(0,255,0,0.03) !important;
-        padding: 15px !important;
-    }
+# Create Computer display
+computer_screen_display("patient_medical_history")
 
-    /* 3. Drop the glossy reflection layer safely over just this container monitor */
-    .st-key-computer_screen::before {
-        content: "";
-        position: absolute;
-        top: 24px;
-        left: 24px;
-        right: 24px;
-        height: 35%;
-        background: linear-gradient(rgba(255,255,255,0.06), transparent);
-        pointer-events: none;
-        z-index: 10;
-        border-radius: 4px 4px 0 0;
-    }
-
-    /* Target regular text, headers, and markdown inside the container */
-    .st-key-computer_screen [data-testid="stMarkdownContainer"] p,
-    .st-key-computer_screen [data-testid="stMarkdownContainer"] h1,
-    .st-key-computer_screen [data-testid="stMarkdownContainer"] h2,
-    .st-key-computer_screen [data-testid="stMarkdownContainer"] h3,
-    .st-key-computer_screen [data-testid="stMarkdownContainer"] li {
-        color: #ffffff !important;
-    }
-
-    /* Target plain text blocks (st.text) */
-    .st-key-computer_screen pre {
-        color: #ffffff !important;
-        background-color: #1a1a1a !important;
-        border-color: #333333 !important;
-    }
-
-    /* Target code snippets (st.code) background to match terminal aesthetics */
-    .st-key-computer_screen code {
-        color: #ffffff !important;
-        background-color: #1e1e1e !important;
-    }
-</style>
-"""
-# 2. Inject global application style layout rules
-st.html(screen_css)
-
-# 3. Instantiate the standard Streamlit container layout component
-with st.container(height=380, border=True, key="computer_screen"):
-    st.markdown("## 🖥️ Patient Medical History Database")
-    st.write(str(st.session_state.get("patient_medical_history", "No medical history provided.")))
-
-
+if st.button(
+    "Restart Voice Chat" if st.session_state.conversation_active else "Start Voice Chat",
+    disabled=st.session_state.patient_assessment_finished,
+):
+    stop_voice_bot_process()
+    try:
+        st.session_state.bot_process = ensure_voice_bot_process(stage="patient_interaction")
+        st.session_state.conversation_active = True
+        st.rerun()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.session_state.conversation_active = False
 
 
 st.markdown(
-    "Start Patient Assessment by clicking the 'Start Voice Chat' button below."
+    "When you click **Start Voice Chat** the conversation will begin. Using your "
+    "microphone, conduct your patient assessment with the bot. Click **Finish Conversation** when done."
 )
 
-# Bot initiates the conversation
-if not st.session_state.patient_interaction_chat_history:
-    
-    with st.chat_message("assistant", avatar=avatar_image_path):
-        initial_prompt = st.session_state["patient_interaction_prompt"]
-
-        response = client.messages.create(
-            max_tokens=st.session_state["max_tokens"],
-            model=st.session_state["model"],
-            system=initial_prompt,
-            messages=[{"role": "user", "content": "Ignore this initial message. Start the conversation."}]
+# --- Embedded voice client ---
+if st.session_state.conversation_active:
+    process = st.session_state.get("bot_process")
+    if process is not None and process.poll() is not None:
+        st.error(
+            "The voice bot process exited unexpectedly. Please click "
+            "**Start Voice Chat** again."
+        )
+        st.session_state.conversation_active = False
+    else:
+        client_url = f"http://{BOT_HOST}:{st.session_state.bot_port}/simple"
+        st.iframe(client_url, height=240)
+        st.caption(
+            "Allow microphone access when prompted, then just speak. "
         )
 
-        message = {"content": response.content[0].text, "role": "assistant"}
-        st.session_state.patient_interaction_chat_history.append(message)
-        st.markdown(message["content"])
-
-
-else:
-    # Write chat history
-    for message in st.session_state.patient_interaction_chat_history:
-
-        if message["role"]=='assistant': avatar=avatar_image_path
-        else: avatar=None
-
-        with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-
-# Chat logic
-if prompt := st.chat_input(
-    "Write a response here",
-    disabled=st.session_state.patient_interaction_finished or st.session_state.response_counter >= MAXIMUM_RESPONSES
-):
-
-    st.session_state.patient_interaction_chat_history.append({"role": "user", "content": prompt})
-
-    if st.session_state.response_counter < MAXIMUM_RESPONSES:
-    
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant", avatar=avatar_image_path):
-
-            response = client.messages.create(
-                max_tokens=st.session_state["max_tokens"],
-                model=st.session_state["model"],
-                system=st.session_state["patient_interaction_prompt"],
-                messages=st.session_state.patient_interaction_chat_history
-            )
-            st.markdown(response.content[0].text)
-
-        st.session_state.response_counter += 1
-        st.session_state.patient_interaction_chat_history.append({"role": "assistant", "content": str(response)})
-
-    else:
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        with st.chat_message("assistant", avatar=avatar_image_path):
-            message = "Well done, I hope I was of assistance."
-            st.markdown(message)
-        
-        final_message = {"role": "assistant", "content": message}
-        st.session_state.patient_interaction_chat_history.append(final_message)
-        st.session_state.patient_interaction_finished = True
-
-# Add finish conversation button below chat input
+# --- Finish ---
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    if not st.session_state.patient_interaction_finished and st.session_state.patient_interaction_chat_history:
-        if st.button("Finish Conversation", key="finish_patient_interaction", use_container_width=True):
-            st.session_state.patient_interaction_finished = True
-            session_id = log_transcript(
-                st.session_state["mongodb_uri"],
-                "patient_interaction",
-                st.session_state.patient_interaction_chat_history,
-                "patient_interaction_transcripts"
-            )
-            st.session_state.session_id = session_id
+    if not st.session_state.patient_assessment_finished and st.session_state.conversation_active:
+        if st.button("Finish Conversation", key="finish_patient_assessment", use_container_width=True):
+            finish_voice_handover(stage="patient_interaction", trigger="manual")
             st.rerun()
+
+if st.session_state.patient_assessment_finished:
+    st.success("Patient assessment completed, proceed to Supervisor Handover page.")
+
+# if st.session_state.conversation_active:
+#     time.sleep(1)
+#     st.rerun()

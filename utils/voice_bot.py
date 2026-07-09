@@ -33,8 +33,10 @@ closed) rather than via Streamlit's Finish button.
 
 import asyncio
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+
 
 from loguru import logger
 try:
@@ -54,9 +56,10 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
+from pipecat.services.openai.stt import OpenAIRealtimeSTTService
+from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.anthropic.llm import AnthropicLLMService
-from pipecat.services.kokoro.tts import KokoroTTSService
-from pipecat.services.whisper.stt import WhisperSTTService
+from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -85,13 +88,13 @@ transport_params = {
 # --- Minimal browser client -------------------------------------------------
 # The Pipecat runner ships a full-featured prebuilt UI at /client/. We don't want
 # all its controls, so we register our own bare-bones page at /simple.
-SIMPLE_CLIENT_HTML_PATH = Path(__file__).resolve().parent / "simple_client.html"
+SIMPLE_CLIENT_HTML_PATH = Path(__file__).resolve().parent / "simple_bot_client.html"
 SIMPLE_CLIENT_HTML_FALLBACK = """<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
 <body style="font-family: system-ui, sans-serif; padding: 16px;">
   <p>The embedded voice client failed to load from disk.</p>
-  <p>Expected file: utils/simple_client.html</p>
+  <p>Expected file: utils/simple_bot_client.html</p>
 </body>
 </html>
 """
@@ -180,6 +183,7 @@ def _normalize_messages(messages) -> list[dict]:
     return normalized
 
 
+
 def _save_transcript(messages) -> None:
     """Persist the conversation to MongoDB on hangup, keyed by student id.
 
@@ -229,19 +233,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
 
-    # Local, batch STT. Runs on CPU here. Model size dominates latency on this
-    # hardware far more than compute type or thread count (measured: tiny
-    # ~0.8s, base ~2.1s, small ~6.7s per utterance for the same sentence).
-    # "tiny" was chosen to chase the sub-1s goal - it is more likely to
-    # mangle clinical terms (INR, warfarin) on noisy/accented mic audio than
-    # base/small, which matters since this is an assessed exercise.
-    stt = WhisperSTTService(
-        settings=WhisperSTTService.Settings(model="tiny"),
-        device="auto",  # set to "cuda" if a GPU is available
-        # The model's stored weights are float16, which CPUs can't run
-        # efficiently - "default" silently falls back to float32. int8 is
-        # CPU's quantized path (minor further win, model size is the big one).
-        compute_type="int8",
+    stt = OpenAIRealtimeSTTService(
+        api_key=os.environ["OPENAI_API_KEY"],
+        settings=OpenAIRealtimeSTTService.Settings(
+            model="gpt-realtime-whisper",
+            language=Language.EN,
+        ),
     )
     llm = AnthropicLLMService(
         api_key=os.environ["ANTHROPIC_API_KEY"],
@@ -252,8 +249,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             enable_prompt_caching=True,  # caches the long handover prompt
         ),
     )
-    tts = KokoroTTSService(  # model/voices auto-download on first use
-        settings=KokoroTTSService.Settings(voice="af_heart"),
+    tts = OpenAITTSService(
+        api_key=os.environ["OPENAI_API_KEY"],
+        settings=OpenAITTSService.Settings(model="tts-1", voice="alloy"),
     )
 
     # Shared context accumulates both sides of the conversation; we read it back

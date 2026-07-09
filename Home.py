@@ -68,8 +68,17 @@ def setup():
     if "session_id" not in st.session_state:
         st.session_state["session_id"] = None
 
+    if "patient_transcript_id" not in st.session_state:
+        st.session_state["patient_transcript_id"] = None
+
+    if "supervisor_transcript_id" not in st.session_state:
+        st.session_state["supervisor_transcript_id"] = None
+
     if "user_identifier" not in st.session_state:
         st.session_state["user_identifier"] = ""
+
+    if "initialised_pages" not in st.session_state:
+        st.session_state["initialised_pages"] = set()
 
     # Set up Anthropic API client
     client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
@@ -78,16 +87,16 @@ def setup():
 
 def init_page():
     setup()
-    if "home_prewarm_started" not in st.session_state:
-        st.session_state["home_prewarm_started"] = False
+    # if "home_prewarm_started" not in st.session_state:
+    #     st.session_state["home_prewarm_started"] = False
 
-    if (not st.session_state["home_prewarm_started"]) or (not is_voice_bot_running()):
-        try:
-            st.session_state["bot_process"] = ensure_voice_bot_process()
-            st.session_state["home_prewarm_started"] = True
-        except RuntimeError as exc:
-            st.warning(str(exc))
-            st.session_state["home_prewarm_started"] = False
+    # if (not st.session_state["home_prewarm_started"]) or (not is_voice_bot_running()):
+    #     try:
+    #         st.session_state["bot_process"] = ensure_voice_bot_process()
+    #         st.session_state["home_prewarm_started"] = True
+    #     except RuntimeError as exc:
+    #         st.warning(str(exc))
+    #         st.session_state["home_prewarm_started"] = False
 
     st.title("Rapid Handover to Busy Clinical Supervisor")
     st.markdown(
@@ -149,8 +158,8 @@ def init_page():
     else:
         st.warning("⚠️ Please enter your identifier before starting any conversations.")
 
-    if is_voice_bot_running():
-        st.caption("TEST: Voice models are preparing in the background.")
+    # if is_voice_bot_running():
+    #     st.caption("TEST: Voice models are preparing in the background.")
 
 if __name__ == "__main__":
     init_page()

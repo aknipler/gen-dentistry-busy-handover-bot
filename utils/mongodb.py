@@ -47,7 +47,20 @@ def get_latest_transcript(connection_string, database_name, collection, identifi
     db = client[database_name]
     try:
         return db[collection].find_one(
-            {"identifier": identifier}, sort=[("timestamp", -1)]
+            {"identifier": identifier}, sort=[("timestamp", -1), ("_id", -1)]
+        )
+    finally:
+        client.close()
+
+
+def get_latest_transcript_since(connection_string, database_name, collection, identifier, min_timestamp):
+    """Return the most recent transcript for an identifier at/after min_timestamp."""
+    client = get_mongo_client(connection_string)
+    db = client[database_name]
+    try:
+        return db[collection].find_one(
+            {"identifier": identifier, "timestamp": {"$gte": min_timestamp}},
+            sort=[("timestamp", -1), ("_id", -1)],
         )
     finally:
         client.close()

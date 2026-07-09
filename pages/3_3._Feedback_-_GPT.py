@@ -15,32 +15,51 @@ client = setup()
 
 avatar_image_path = " "
 TRANSPARENT_AVATAR = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-# avatar_image_path = Path(__file__).parent / "images" / "Supervisor Icon.png"
 
 st.title("Feedback")
 
-
-# st.markdown(
-#     "## Feedback on patient interaction"
-# )
     
 with st.chat_message("assistant", avatar=TRANSPARENT_AVATAR):
     initial_prompt = st.session_state["feedback_prompt"]
-    patient_interaction_transcript = get_transcript(st.session_state["mongodb_uri"], st.session_state["mongodb_database_name"], "patient_interaction_transcripts", st.session_state.session_id)
-    supervisor_handover_transcript = get_transcript(st.session_state["mongodb_uri"], st.session_state["mongodb_database_name"], "supervisor_handover_transcripts", st.session_state.session_id)
-
-    response = client.chat.completions.create(
-        model=st.session_state["model"],
-        messages=[
-            {"role": "system", "content": initial_prompt},
-            {"role": "system", "content": "patient interaction transcript: " + str(patient_interaction_transcript)},
-            {"role": "system", "content": "supervisor handover transcript: " + str(supervisor_handover_transcript)},
-        ]
+    patient_transcript_id = (
+        st.session_state.get("patient_transcript_id")
+        or st.session_state.get("session_id")
+    )
+    supervisor_transcript_id = (
+        st.session_state.get("supervisor_transcript_id")
+        or st.session_state.get("session_id")
+    )
+    if not patient_transcript_id or not supervisor_transcript_id:
+        st.error("Missing transcript references. Please complete Patient Interaction and Supervisor Handover first.")
+        st.stop()
+    patient_interaction_transcript = get_transcript(
+        st.session_state["mongodb_uri"],
+        st.session_state["mongodb_database_name"],
+        "patient_interaction_transcripts",
+        patient_transcript_id,
+    )
+    supervisor_handover_transcript = get_transcript(
+        st.session_state["mongodb_uri"],
+        st.session_state["mongodb_database_name"],
+        "supervisor_handover_transcripts",
+        supervisor_transcript_id,
     )
 
-message = {"content": response.choices[0].message.content, "role": "assistant"}
-st.session_state.feedback_chat_history.append(message)
-st.markdown(message["content"])
+    response = client.messages.create(
+        model="claude-sonnet-5",
+        system=initial_prompt,
+        messages=[
+            {"role": "user", "content": "patient interaction transcript: " + str(patient_interaction_transcript)
+            + "\n" +
+            "supervisor handover transcript: " + str(supervisor_handover_transcript)},
+        ],
+        max_tokens=st.session_state["max_tokens"]
+    )
+
+for block in response.content:
+    if block.type == "text":
+        st.session_state.feedback_chat_history = block.text
+        st.markdown(block.text)
 
 session_id = log_transcript(
                 st.session_state["mongodb_uri"],
@@ -48,26 +67,5 @@ session_id = log_transcript(
                 st.session_state.feedback_chat_history,
                 "feedback_transcripts"
             )
+
 st.session_state.session_id = session_id
-# st.rerun()
-
-# st.markdown(
-#     "## Feedback on supervisor handover"
-# )
-    
-# with st.chat_message("assistant", avatar=avatar_image_path):
-#     initial_prompt = st.session_state["feedback_prompt"]
-#     supervisor_handover_transcript = st.database.get_collection("supervisor_handover_transcripts").find_one({"_id": st.session_state.session_id})
-
-#     response = client.chat.completions.create(
-#         model=st.session_state["model"],
-#         messages=[
-#             {"role": "system", "content": initial_prompt},
-#             {"role": "system", "content": supervisor_handover_transcript},
-#         ]
-#     )
-
-#     message = {"content": response.choices[0].message.content, "role": "assistant"}
-#     st.session_state.feedback_chat_history.append(message)
-#     st.markdown(message["content"])
-
