@@ -1,0 +1,36 @@
+#!/bin/bash
+# Measure latency between patient and supervisor bots
+# Usage: bash scripts/measure_latency.sh
+
+LOG_DIR="logs"
+PATIENT_LOG="$LOG_DIR/voice_bot_patient_baseline.log"
+SUPERVISOR_LOG="$LOG_DIR/voice_bot_supervisor_baseline.log"
+
+mkdir -p "$LOG_DIR"
+
+echo "=== Latency Measurement Instructions ==="
+echo ""
+echo "This script will help you measure latency differences between stages."
+echo ""
+echo "Steps:"
+echo "1. Start Streamlit app: streamlit run Home.py"
+echo "2. Go to Patient Interaction page, click 'Start Voice Chat'"
+echo "3. Say a test phrase like 'Hello' and wait for response"
+echo "4. Note the time in browser console"
+echo "5. Click 'Finish Conversation' and check logs at: $PATIENT_LOG"
+echo ""
+echo "6. Go to Supervisor Handover page, click 'Start Voice Chat'"
+echo "7. Say the same test phrase and measure response time"
+echo "8. Click 'Finish Conversation' and check logs at: $SUPERVISOR_LOG"
+echo ""
+echo "9. Compare logs using:"
+echo "   grep 'TIMING' $PATIENT_LOG"
+echo "   grep 'TIMING' $SUPERVISOR_LOG"
+echo ""
+echo "The bot logs will show timing for:"
+echo "  [TIMING-STT-init] = Speech-to-text initialization"
+echo "  [TIMING-LLM-init] = Language model initialization"
+echo "  [TIMING-TTS-init] = Text-to-speech initialization"
+echo ""
+echo "These init times are measured during bot startup."
+echo "For response latency, check browser DevTools Network tab."

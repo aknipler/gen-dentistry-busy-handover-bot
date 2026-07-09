@@ -31,6 +31,10 @@ initialise_voice_bot_page(PAGE_INIT_KEY)
 if not bool(st.session_state.get("user_identifier", "").strip()):
     st.error("Please enter your identifier on the Home page before starting the conversation.")
     st.stop()
+elif st.session_state.patient_assessment_finished:
+    st.success("Patient assessment completed, proceed to Supervisor Handover page.")
+    st.stop()
+
 
 st.title("Patient Assessment")
 
@@ -52,7 +56,8 @@ if st.button(
 
 
 st.markdown(
-    "When you click **Start Voice Chat** the conversation will begin. Using your "
+    "When you click **Start Voice Chat** the bot will take 10-15 seconds to load. The first response "
+    "from the bot may be slow, but after that, the conversation should flow. Using your "
     "microphone, conduct your patient assessment with the bot. Click **Finish Conversation** when done."
 )
 
@@ -79,9 +84,6 @@ with col2:
         if st.button("Finish Conversation", key="finish_patient_assessment", use_container_width=True):
             finish_voice_handover(stage="patient_interaction", trigger="manual")
             st.rerun()
-
-if st.session_state.patient_assessment_finished:
-    st.success("Patient assessment completed, proceed to Supervisor Handover page.")
 
 # if st.session_state.conversation_active:
 #     time.sleep(1)

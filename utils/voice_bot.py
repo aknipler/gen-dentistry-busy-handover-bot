@@ -68,6 +68,23 @@ from pipecat.workers.runner import WorkerRunner
 load_dotenv(override=True)
 
 
+# --- Performance Instrumentation ---
+class Timer:
+    """Simple context manager for measuring pipeline stage timing."""
+    
+    def __init__(self, label: str):
+        self.label = label
+        self.start_ns = None
+    
+    def __enter__(self):
+        self.start_ns = time.perf_counter_ns()
+        return self
+    
+    def __exit__(self, *args):
+        elapsed_ms = (time.perf_counter_ns() - self.start_ns) / 1_000_000
+        logger.debug(f"[TIMING-{self.label}] {elapsed_ms:.1f}ms")
+
+
 # --- Configuration (from the environment set by the launching Streamlit page) ---
 DEFAULT_MODEL = os.environ.get("BOT_MODEL", "claude-haiku-4-5")
 PROMPT_PATH = os.environ.get("PROMPT_PATH")
@@ -231,28 +248,40 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     model = body.get("model", DEFAULT_MODEL)
     system_prompt = body.get("system_prompt") or _load_system_prompt()
 
+    logger.info(f"[BOT-START] Stage: {TRANSCRIPT_COLLECTION} | Model: {model} | Prompt size: {len(system_prompt)} chars")
+    
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
 
-    stt = OpenAIRealtimeSTTService(
-        api_key=os.environ["OPENAI_API_KEY"],
-        settings=OpenAIRealtimeSTTService.Settings(
-            model="gpt-realtime-whisper",
-            language=Language.EN,
-        ),
-    )
-    llm = AnthropicLLMService(
-        api_key=os.environ["ANTHROPIC_API_KEY"],
-        settings=AnthropicLLMService.Settings(
-            model=model,
-            system_instruction=system_prompt,
-            max_tokens=1024,
-            enable_prompt_caching=True,  # caches the long handover prompt
-        ),
-    )
-    tts = OpenAITTSService(
-        api_key=os.environ["OPENAI_API_KEY"],
-        settings=OpenAITTSService.Settings(model="tts-1", voice="alloy"),
-    )
+    with Timer("STT-init"):
+        stt = OpenAIRealtimeSTTService(
+            api_key=os.environ["OPENAI_API_KEY"],
+            settings=OpenAIRealtimeSTTService.Settings(
+                model="gpt-realtime-whisper",
+                language=Language.EN,
+            ),
+        )
+    
+    # Optimize LLM settings per stage
+    # Patient interaction: shorter responses for interview Q&A = lower max_tokens
+    # Supervisor handover: longer responses for detailed feedback = higher max_tokens
+    max_tokens = 256 if TRANSCRIPT_COLLECTION == "patient_interaction_transcripts" else 1024
+    
+    with Timer("LLM-init"):
+        llm = AnthropicLLMService(
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+            settings=AnthropicLLMService.Settings(
+                model=model,
+                system_instruction=system_prompt,
+                max_tokens=max_tokens,
+                enable_prompt_caching=True,  # caches the long handover prompt
+            ),
+        )
+    
+    with Timer("TTS-init"):
+        tts = OpenAITTSService(
+            api_key=os.environ["OPENAI_API_KEY"],
+            settings=OpenAITTSService.Settings(model="tts-1", voice="alloy"),
+        )
 
     # Shared context accumulates both sides of the conversation; we read it back
     # out on hangup to store the transcript. Published to the module level so
