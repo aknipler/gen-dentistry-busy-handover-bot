@@ -25,12 +25,21 @@ PAGE_INIT_KEY = "supervisor_handover"
 initialise_voice_bot_page(PAGE_INIT_KEY)
 
 
-# --- Start ---
-
 if not bool(st.session_state.get("user_identifier", "").strip()):
     st.error("Please enter your identifier on the Home page before starting the conversation.")
     st.stop()
+elif not st.session_state.patient_interaction_finished:
+    st.error("Please complete the Patient Interaction first.")
+    st.stop()
+elif st.session_state.supervisor_handover_finished:
+    st.success("Supervisor handover completed, proceed to Feedback page.")
+    st.stop()
 
+
+
+
+
+# --- Start ---
 st.title("Supervisor Handover")
 
 if st.button(
@@ -48,14 +57,14 @@ if st.button(
         st.error(str(exc))
         st.session_state.conversation_active = False
 
-if (
-    st.session_state.conversation_active
-    and st.session_state.handover_timer_started_at is not None
-    and (time.time() - st.session_state.handover_timer_started_at)
-    >= st.session_state.handover_timer_duration_seconds
-):
-    finish_voice_handover(stage="supervisor_handover", trigger="timer")
-    st.rerun()
+# if (
+#     st.session_state.conversation_active
+#     and st.session_state.handover_timer_started_at is not None
+#     and (time.time() - st.session_state.handover_timer_started_at)
+#     >= st.session_state.handover_timer_duration_seconds
+# ):
+#     finish_voice_handover(stage="supervisor_handover", trigger="timer")
+#     st.rerun()
 
 co1, co2 = st.columns([3, 1])
 with co1:

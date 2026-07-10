@@ -80,6 +80,9 @@ def setup():
     if "initialised_pages" not in st.session_state:
         st.session_state["initialised_pages"] = set()
 
+    if "patient_interaction_started_at_utc" not in st.session_state:
+        st.session_state["patient_interaction_started_at_utc"] = None
+
     # Set up Anthropic API client
     client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
@@ -151,7 +154,7 @@ def init_page():
     if identifier:
         if check_identifier(st.session_state["mongodb_uri"], identifier):
             st.session_state["user_identifier"] = identifier
-            st.success("✅ Identifier validated successfully. You can now proceed to the conversation page.")
+            st.success("✅ Identifier validated successfully. You can now proceed to the Patient Interaction page.")
         else:
             st.error("❌ Invalid identifier. Please enter a valid identifier.")
             st.session_state["user_identifier"] = ""

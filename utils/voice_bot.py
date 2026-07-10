@@ -13,6 +13,7 @@ every voice roleplay stage:
 
     ANTHROPIC_API_KEY          - required, Claude API key
     BOT_MODEL                  - Claude model id (default: claude-haiku-4-5)
+    BOT_VOICE                  - TTS voice (default: alloy)
     PROMPT_PATH                - path to the system prompt file for this stage
     TRANSCRIPT_COLLECTION      - Mongo collection to save the transcript into
     STUDENT_IDENTIFIER         - student id, stored with the transcript
@@ -87,6 +88,7 @@ class Timer:
 
 # --- Configuration (from the environment set by the launching Streamlit page) ---
 DEFAULT_MODEL = os.environ.get("BOT_MODEL", "claude-haiku-4-5")
+DEFAULT_VOICE = os.environ.get("BOT_VOICE", "alloy")  # default voice for TTS
 PROMPT_PATH = os.environ.get("PROMPT_PATH")
 STUDENT_IDENTIFIER = os.environ.get("STUDENT_IDENTIFIER", "anonymous")
 MONGODB_URI = os.environ.get("MONGODB_CONNECTION_STRING")
@@ -141,6 +143,32 @@ _register_simple_client()
 # insert the same transcript twice.
 _active_context: LLMContext | None = None
 _transcript_saved = False
+
+# A fresh MongoClient's first connect (DNS SRV lookup + TLS handshake to Atlas)
+# can take 4-5+ seconds. /hangup is called right before Streamlit force-kills
+# this process, with only a few seconds of grace - a cold connect started at
+# that moment routinely loses the race and gets killed mid-insert, silently
+# dropping the transcript. We connect once, eagerly, at bot startup instead
+# (see _warm_mongo_client), so by the time /hangup fires the connection is
+# already established and the insert itself is fast.
+_mongo_client = None
+
+
+def _warm_mongo_client() -> None:
+    """Eagerly establish the MongoDB connection well before /hangup needs it."""
+    global _mongo_client
+    if not MONGODB_URI or not MONGODB_DB:
+        return
+    try:
+        from pymongo import MongoClient
+        from pymongo.server_api import ServerApi
+
+        client = MongoClient(MONGODB_URI, server_api=ServerApi("1"))
+        client.admin.command("ping")  # force the connection to actually establish now
+        _mongo_client = client
+        logger.info("MongoDB connection warmed up and ready.")
+    except Exception:
+        logger.exception("Failed to warm up MongoDB connection; will retry on save.")
 
 
 def _register_hangup_route() -> None:
@@ -205,7 +233,9 @@ def _save_transcript(messages) -> None:
     """Persist the conversation to MongoDB on hangup, keyed by student id.
 
     Runs in this standalone process, so it cannot use utils.mongodb (that helper
-    reads config from st.session_state). We connect directly instead.
+    reads config from st.session_state). We connect directly instead, reusing
+    the connection _warm_mongo_client() opened at startup so this doesn't pay
+    the cold-connect cost while Streamlit's kill timer is already running.
     """
     if not MONGODB_URI or not MONGODB_DB:
         logger.info("MongoDB not configured; skipping transcript save.")
@@ -216,22 +246,26 @@ def _save_transcript(messages) -> None:
         logger.info("Empty transcript; nothing to save.")
         return
 
-    from pymongo import MongoClient
-    from pymongo.server_api import ServerApi
+    global _mongo_client
+    client = _mongo_client
+    if client is None:
+        # Warm-up hadn't finished (or failed) - fall back to connecting now.
+        from pymongo import MongoClient
+        from pymongo.server_api import ServerApi
 
-    client = MongoClient(MONGODB_URI, server_api=ServerApi("1"))
-    try:
-        db = client[MONGODB_DB]
-        result = db[TRANSCRIPT_COLLECTION].insert_one(
-            {
-                "timestamp": datetime.now(timezone.utc),
-                "messages": normalized,
-                "identifier": STUDENT_IDENTIFIER,
-            }
-        )
-        logger.info(f"Saved transcript {result.inserted_id} for {STUDENT_IDENTIFIER} to {TRANSCRIPT_COLLECTION}.")
-    finally:
-        client.close()
+        client = MongoClient(MONGODB_URI, server_api=ServerApi("1"))
+        _mongo_client = client
+
+
+    db = client[MONGODB_DB]
+    result = db[TRANSCRIPT_COLLECTION].insert_one(
+        {
+            "timestamp": datetime.now(timezone.utc),
+            "messages": normalized,
+            "identifier": STUDENT_IDENTIFIER,
+        }
+    )
+    logger.info(f"Saved transcript {result.inserted_id} for {STUDENT_IDENTIFIER} to {TRANSCRIPT_COLLECTION}.")
 
 
 def _save_transcript_once(messages) -> None:
@@ -239,17 +273,23 @@ def _save_transcript_once(messages) -> None:
     global _transcript_saved
     if _transcript_saved:
         return
-    _transcript_saved = True
     _save_transcript(messages)
+    _transcript_saved = True
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     body = getattr(runner_args, "body", None) or {}
     model = body.get("model", DEFAULT_MODEL)
-    system_prompt = body.get("system_prompt") or _load_system_prompt()
+    voice = body.get("voice", DEFAULT_VOICE)
+    system_prompt = str(body.get("system_prompt") or _load_system_prompt()) + "Do not describe any actions, thoughts, or movements."
 
-    logger.info(f"[BOT-START] Stage: {TRANSCRIPT_COLLECTION} | Model: {model} | Prompt size: {len(system_prompt)} chars")
-    
+    logger.info(f"[BOT-START] Stage: {TRANSCRIPT_COLLECTION} | Model: {model} | Voice: {voice} | Prompt size: {len(system_prompt)} chars")
+
+    # Fire-and-forget: connect to MongoDB now, in the background, so the
+    # connection is already warm by the time /hangup needs to save the
+    # transcript (see _warm_mongo_client's docstring for why this matters).
+    asyncio.create_task(asyncio.to_thread(_warm_mongo_client))
+
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
 
     with Timer("STT-init"):
@@ -280,7 +320,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     with Timer("TTS-init"):
         tts = OpenAITTSService(
             api_key=os.environ["OPENAI_API_KEY"],
-            settings=OpenAITTSService.Settings(model="tts-1", voice="alloy"),
+            settings=OpenAITTSService.Settings(model="tts-1", voice=voice),
+            # Voice options for older man: Ash or Onyx
+            # Voice options for older woman: Alloy
         )
 
     # Shared context accumulates both sides of the conversation; we read it back

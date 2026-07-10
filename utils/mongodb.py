@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from bson.objectid import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 import streamlit as st
 
 def get_mongo_client(connection_string):
@@ -25,8 +25,8 @@ def log_transcript(connection_string, conversation_type, messages, collection):
     try:
         # Create new document for previous conversation
         document = {
-            "timestamp": datetime.utcnow(),
-            "em_messages": messages,
+            "timestamp": datetime.now(timezone.utc),
+            "messages": messages,
             "identifier": st.session_state.get("user_identifier", "anonymous")
         }
         result = collection.insert_one(document)

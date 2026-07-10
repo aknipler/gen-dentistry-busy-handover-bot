@@ -1,4 +1,6 @@
 import streamlit as st
+import time
+from datetime import datetime, timezone
 from utils.voice_bot_launcher import finish_voice_handover
 
 def render_timer_panel() -> None:
@@ -15,7 +17,7 @@ def render_timer_panel() -> None:
     st.markdown(f"### ⏱️ {remaining} seconds")
 
     if st.session_state.conversation_active and remaining <= 0:
-        finish_voice_handover("timer")
+        finish_voice_handover(stage="supervisor_handover", trigger="timer")
         st.rerun()
 
 

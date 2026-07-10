@@ -1,15 +1,28 @@
+# Secrets / credentials
 .streamlit/
+.env
+.env.*
+secrets.toml
+
+# Student identifier files (link identifiers back to real students)
+*.csv
+
+# Python
 .venv/
 venv/
-.env
-secrets.toml
-*.csv
 __pycache__/
-# Voice bot runtime logs
+
+# Voice bot runtime logs (per-process logs written to logs/voice_bot_<port>.log)
 logs/
 *.log
 
+# Build / packaging output
+build/
+.dist/
+
+# Session-specific / scratch docs, not part of the shipped project
+LATENCY_OPTIMIZATIONS.md
 *moshi.pdf
 **/*context.md
 
-build/
+.python-version

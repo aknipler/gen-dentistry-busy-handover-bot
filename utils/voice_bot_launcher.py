@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import streamlit as st
 
@@ -29,11 +29,13 @@ VOICE_BOT_STAGES = {
         "prompt_path": "prompts/patient_interaction_prompt.txt",
         "transcript_collection": "patient_interaction_transcripts",
         "session_state_key": "patient_transcript_id",
+        "voice": "onyx", 
     },
     "supervisor_handover": {
         "prompt_path": "prompts/supervisor_handover_prompt.txt",
         "transcript_collection": "supervisor_handover_transcripts",
         "session_state_key": "supervisor_transcript_id",
+        "voice": "alloy", 
     },
 }
 
@@ -42,19 +44,18 @@ def initialise_voice_bot_page(PAGE_INIT_KEY) -> None:
 
     if "supervisor_handover_finished" not in st.session_state:
         st.session_state.supervisor_handover_finished = False
-    if "patient_assessment_finished" not in st.session_state:
-        st.session_state.patient_assessment_finished = False
+    if "patient_interaction_finished" not in st.session_state:
+        st.session_state.patient_interaction_finished = False
 
     if PAGE_INIT_KEY not in st.session_state.initialised_pages:
         
         st.session_state.initialised_pages.add(PAGE_INIT_KEY)
         st.session_state.conversation_active = False
 
-        st.session_state.bot_process = None
-        st.session_state.bot_port = None
-        st.session_state.bot_log_path = None
-        st.session_state.bot_log_file = None
-        st.session_state.bot_config = None
+        # Stop any process left running from a previous page/stage before
+        # dropping the reference - otherwise it becomes an orphaned process
+        # that keeps consuming CPU and competes with the next bot's startup.
+        stop_voice_bot_process()
 
         st.session_state.handover_timer_started_at = None
         st.session_state.handover_timer_duration_seconds = 130
@@ -84,14 +85,38 @@ def is_voice_bot_running() -> bool:
     return _is_process_running(st.session_state.get(SESSION_KEY_BOT_PROCESS))
 
 
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    """Kill a process and any children it spawned.
+
+    Windows' Popen.terminate() is TerminateProcess, which only kills the
+    direct process - any child processes it spawned (e.g. aiortc/pipecat
+    worker subprocesses) survive and become orphans that keep consuming
+    CPU, slowing down and sometimes timing out the next bot's startup.
+    `taskkill /T` kills the whole tree; fall back to terminate()/kill() if
+    that's unavailable (e.g. non-Windows platforms).
+    """
+    if sys.platform == "win32":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                capture_output=True,
+                timeout=5,
+            )
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
 def stop_voice_bot_process() -> None:
     process = st.session_state.get(SESSION_KEY_BOT_PROCESS)
     if _is_process_running(process):
-        process.terminate()
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        _terminate_process_tree(process)
 
     log_file = st.session_state.get(SESSION_KEY_BOT_LOG_FILE)
     if log_file is not None and not log_file.closed:
@@ -116,7 +141,7 @@ def request_voice_bot_hangup(port: int | None, timeout_seconds: float = 0.75) ->
         return
 
 
-def request_voice_bot_hangup_async(timeout_seconds: float = 0.5) -> None:
+def request_voice_bot_hangup_async(timeout_seconds: float = 0.5) -> threading.Thread:
     port = st.session_state.get(SESSION_KEY_BOT_PORT)
     thread = threading.Thread(
         target=request_voice_bot_hangup,
@@ -124,6 +149,7 @@ def request_voice_bot_hangup_async(timeout_seconds: float = 0.5) -> None:
         daemon=True,
     )
     thread.start()
+    return thread
 
 
 def finish_voice_handover(stage: str = "supervisor_handover", trigger: str = "manual") -> None:
@@ -138,8 +164,27 @@ def finish_voice_handover(stage: str = "supervisor_handover", trigger: str = "ma
     session_state_key = stage_config["session_state_key"]
     
     st.session_state.conversation_active = False
-    request_voice_bot_hangup_async()
+
+    # Wait for the /hangup request to actually land before killing the process.
+    # request_voice_bot_hangup_async() only starts a background thread and
+    # returns immediately - without joining it here, stop_voice_bot_process()
+    # (which force-kills the whole process tree) can win the race and kill the
+    # bot before the hangup handler ever runs, so the transcript never saves.
+    # The bot pre-warms its MongoDB connection at startup so the actual insert
+    # on /hangup is fast, but this timeout still needs enough slack for a cold
+    # connect on the rare chance warm-up hadn't finished yet (a bare MongoClient
+    # connect + insert to Atlas was measured at ~4.7s).
+    hangup_timeout_seconds = 8.0
+    hangup_thread = request_voice_bot_hangup_async(timeout_seconds=hangup_timeout_seconds)
+    hangup_thread.join(timeout=hangup_timeout_seconds + 2.0)
+
     stop_voice_bot_process()
+
+    # Determine the start time for this stage
+    if stage == "supervisor_handover":
+        start_time = st.session_state.get("handover_started_at_utc") or (datetime.now(timezone.utc) - timedelta(minutes=10))
+    else:
+        start_time = st.session_state.get("patient_interaction_started_at_utc") or (datetime.now(timezone.utc) - timedelta(minutes=10))
 
     # Give /hangup a brief chance to persist before reading the transcript.
     transcript = None
@@ -149,7 +194,7 @@ def finish_voice_handover(stage: str = "supervisor_handover", trigger: str = "ma
             st.session_state["mongodb_database_name"],
             transcript_collection,
             st.session_state["user_identifier"],
-            st.session_state.handover_started_at_utc or datetime.now(timezone.utc),
+            start_time,
         )
         if transcript is not None:
             break
@@ -163,7 +208,7 @@ def finish_voice_handover(stage: str = "supervisor_handover", trigger: str = "ma
             st.session_state.handover_started_at_utc = None
         elif stage == "patient_interaction":
             st.session_state.patient_interaction_chat_history = transcript.get("messages", [])
-            st.session_state.patient_assessment_finished = True
+            st.session_state.patient_interaction_finished = True
         
         st.session_state.session_id = str(transcript["_id"])
         st.session_state[session_state_key] = str(transcript["_id"])
@@ -193,9 +238,11 @@ def _start_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"  # stream logs live instead of buffering to the log file
     env["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
     env["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
     env["BOT_MODEL"] = config["model"]
+    env["BOT_VOICE"] = stage_config["voice"]
     env["PROMPT_PATH"] = stage_config["prompt_path"]
     env["TRANSCRIPT_COLLECTION"] = stage_config["transcript_collection"]
     env["STUDENT_IDENTIFIER"] = config["identifier"]
@@ -228,7 +275,7 @@ def _start_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
     return process
 
 
-def _wait_for_voice_bot_ready(port: int, timeout_seconds: int = 20) -> None:
+def _wait_for_voice_bot_ready(port: int, timeout_seconds: int = 45) -> None:
     url = f"http://{BOT_HOST}:{port}/simple"
     deadline = time.monotonic() + timeout_seconds
     last_error = None
