@@ -80,7 +80,24 @@ function attachBotAudio(stream) {
   });
 }
 
+// Daily's SDK rejects/emits errors as plain objects shaped like
+// { errorMsg, error: {...} }, not native Error instances - reading
+// err.message on those silently gives "undefined". Check every shape we
+// might get (string, DOMException, Daily's own object) and always log the
+// raw value so real failures are diagnosable from devtools, not just the
+// on-page status line.
+function describeError(err) {
+  if (!err) return "unknown error";
+  if (typeof err === "string") return err;
+  return err.errorMsg || err.message || err.name || JSON.stringify(err);
+}
+
 async function start() {
+  if (typeof DailyIframe === "undefined") {
+    setStatus("Error: failed to load the Daily SDK (check network/ad-blockers)");
+    return;
+  }
+
   try {
     // Headless call object: no Daily prebuilt UI (video tiles, chat,
     // participant list) is ever rendered - we drive everything ourselves,
@@ -94,11 +111,15 @@ async function start() {
     });
 
     call.on("left-meeting", () => setStatus("Disconnected"));
-    call.on("error", (e) => setStatus("Error: " + (e && e.errorMsg ? e.errorMsg : "connection failed")));
+    call.on("error", (e) => {
+      console.error("Daily call error:", e);
+      setStatus("Error: " + describeError(e));
+    });
 
     await call.join({ url: ROOM_URL, videoSource: false });
   } catch (err) {
-    setStatus("Error: " + err.message);
+    console.error("Daily join failed:", err);
+    setStatus("Error: " + describeError(err));
   }
 }
 
