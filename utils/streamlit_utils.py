@@ -1,63 +1,7 @@
-import json
+import streamlit as st
 import time
 from datetime import datetime, timezone
-from pathlib import Path
-
-import streamlit as st
-
 from utils.voice_bot_launcher import finish_voice_handover
-
-DAILY_CLIENT_TEMPLATE_PATH = Path(__file__).resolve().parent / "daily_client_template.html"
-# Requires server.enableStaticServing=true (see .streamlit/config.toml) -
-# Streamlit serves this directory at the /app/static/ URL prefix.
-APP_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-
-
-def voice_client_static_filename(port: int) -> str:
-    """Filename (not path) of the per-session voice client HTML for a bot port.
-
-    Shared with voice_bot_launcher.py, which deletes this file when the bot
-    stops - the port is the only thing available on both sides that's unique
-    per running bot process.
-    """
-    return f"voice_client_{port}.html"
-
-
-def render_voice_client(room_url: str, height: int = 240) -> None:
-    """Embed a minimal, custom voice-call UI for the given Daily room.
-
-    Embedding the raw Daily room URL in an iframe pulls in Daily's full
-    prebuilt UI (video tiles, chat, participant list, camera/mic controls),
-    which is a lot of clutter for a bot that's audio-only. This instead
-    injects the room URL into a small HTML/JS page (see
-    utils/daily_client_template.html) that joins the room headlessly via the
-    Daily JS SDK and renders just a waveform + status line, matching the
-    minimal client the app used before moving to Daily.
-
-    This has to be served from a real same-origin URL, not an inline iframe
-    srcdoc: Daily's JS SDK loads its call-object bundle via postMessage
-    targeted at window.location.origin, and a sandboxed srcdoc iframe has an
-    opaque ("null") origin, which postMessage rejects outright. Writing the
-    (session-specific) HTML to Streamlit's app-static directory and pointing
-    the iframe at its /app/static/ URL gives it a real origin instead.
-    """
-    APP_STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    template = DAILY_CLIENT_TEMPLATE_PATH.read_text(encoding="utf-8")
-    html = template.replace("__ROOM_URL_JSON__", json.dumps(room_url))
-
-    port = st.session_state.get("bot_port")
-    filename = voice_client_static_filename(port)
-    (APP_STATIC_DIR / filename).write_text(html, encoding="utf-8")
-
-    # "?v=" forces st.iframe down its relative-URL code path rather than its
-    # local-file path: without it, a string like "/app/static/foo.html" could
-    # resolve to an actual file on disk (Streamlit Cloud typically deploys
-    # under /app) and get embedded via srcdoc again - exactly what this is
-    # trying to avoid. No file on disk will ever contain "?" in its name, so
-    # this guarantees the URL branch. It also cache-busts across bot restarts
-    # that reuse the same port.
-    st.iframe(f"/app/static/{filename}?v={int(time.time())}", height=height)
-
 
 def render_timer_panel() -> None:
     if st.session_state.supervisor_handover_finished:

@@ -29,7 +29,6 @@ from utils.mongodb import get_latest_transcript_since
 BOT_HOST = "127.0.0.1"
 BOT_SCRIPT = Path(__file__).resolve().parent / "voice_bot.py"
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-APP_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 SESSION_KEY_BOT_PROCESS = "bot_process"
 SESSION_KEY_BOT_PORT = "bot_port"
@@ -135,15 +134,6 @@ def stop_voice_bot_process() -> None:
     log_file = st.session_state.get(SESSION_KEY_BOT_LOG_FILE)
     if log_file is not None and not log_file.closed:
         log_file.close()
-
-    # Delete the per-session voice client HTML written by
-    # streamlit_utils.render_voice_client (filename convention duplicated
-    # there - can't import it here without a circular import, since that
-    # module imports finish_voice_handover from this one).
-    port = st.session_state.get(SESSION_KEY_BOT_PORT)
-    if port:
-        static_file = APP_STATIC_DIR / f"voice_client_{port}.html"
-        static_file.unlink(missing_ok=True)
 
     st.session_state[SESSION_KEY_BOT_PROCESS] = None
     st.session_state[SESSION_KEY_BOT_PORT] = None

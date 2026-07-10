@@ -1,9 +1,0 @@
-[server]
-# Required so the voice-client HTML (utils/streamlit_utils.py:render_voice_client)
-# can be served from a real same-origin URL (/app/static/...) instead of an
-# iframe srcdoc. Daily's JS SDK loads a call-object bundle via postMessage
-# targeted at window.location.origin - inside a sandboxed srcdoc iframe that
-# origin is the opaque string "null", which postMessage rejects outright
-# ("Invalid target origin 'null'"). A real static-file URL has a genuine
-# origin, so this is required, not just an optimization.
-enableStaticServing = true

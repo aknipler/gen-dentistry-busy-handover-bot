@@ -1,7 +1,7 @@
 # Secrets / credentials
 # NOTE: only secrets.toml is ignored, not the whole .streamlit/ directory -
-# .streamlit/config.toml (enableStaticServing etc.) must be committed for
-# Streamlit Community Cloud to pick it up.
+# keeps the door open for a future .streamlit/config.toml to be committed
+# without silently being blocked.
 .streamlit/secrets.toml
 .env
 .env.*
@@ -9,11 +9,6 @@ secrets.toml
 
 # Student identifier files (link identifiers back to real students)
 *.csv
-
-# Per-session voice client HTML written at runtime by
-# utils/streamlit_utils.py:render_voice_client (see .streamlit/config.toml's
-# enableStaticServing) - not part of the repo, one file per active bot process.
-static/*.html
 
 # Python
 .venv/
