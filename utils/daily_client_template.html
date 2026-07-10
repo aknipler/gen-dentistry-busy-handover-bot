@@ -8,9 +8,11 @@
   html, body { margin: 0; height: 100%; background: transparent;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   #wrap { display: flex; flex-direction: column; align-items: center;
-    justify-content: center; height: 100%; gap: 14px; }
+    justify-content: center; height: 100%; gap: 10px; }
   #wave { width: 100%; max-width: 640px; height: 160px; }
   #status { font-size: 14px; color: #6b7280; letter-spacing: .02em; }
+  #debug { font-size: 11px; color: #9ca3af; font-family: ui-monospace, monospace;
+    max-width: 90%; text-align: center; white-space: pre-wrap; }
   #enable { display: none; padding: 10px 18px; font-size: 15px; cursor: pointer;
     border: 0; border-radius: 999px; background: #2563eb; color: #fff; }
 </style>
@@ -18,7 +20,8 @@
 <body>
   <div id="wrap">
     <canvas id="wave" width="640" height="160"></canvas>
-    <div id="status">Connecting…</div>
+    <div id="status">Loading…</div>
+    <div id="debug"></div>
     <button id="enable">Tap to enable audio</button>
     <audio id="botAudio" autoplay></audio>
   </div>
@@ -26,14 +29,29 @@
 // Room URL is injected server-side (see utils/streamlit_utils.py) as a JSON
 // string literal, so it's safely escaped for embedding here.
 const ROOM_URL = __ROOM_URL_JSON__;
+const JOIN_TIMEOUT_MS = 25000;
 
 const statusEl = document.getElementById("status");
+const debugEl = document.getElementById("debug");
 const enableBtn = document.getElementById("enable");
 const botAudio = document.getElementById("botAudio");
 const canvas = document.getElementById("wave");
 const ctx = canvas.getContext("2d");
 
+let audioAttached = false;
+let timedOut = false;
+
 function setStatus(t) { statusEl.textContent = t; }
+
+// Mirrors every milestone to both the console (for devtools) and a small
+// on-page debug line (so the failure state is visible without devtools -
+// this is here specifically because a previous version of this client just
+// hung on "Connecting..." with no visibility into why).
+function log(msg, data) {
+  const line = data !== undefined ? `${msg} ${JSON.stringify(data)}` : msg;
+  console.log("[voice-client]", line);
+  debugEl.textContent = line;
+}
 
 // Draw a live waveform of whatever audio is on the given analyser. When the bot
 // is silent the line is flat; when it speaks the line moves.
@@ -58,26 +76,40 @@ function drawWaveform(analyser) {
   frame();
 }
 
-function attachBotAudio(stream) {
+function attachBotAudio(stream, source) {
+  if (audioAttached) return;
+  audioAttached = true;
+  log(`Audio track attached (via ${source})`);
+
   // Attach to an <audio> element (required for the audio to actually play)
   // and also tap it with an analyser for the waveform.
   botAudio.srcObject = stream;
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   const audioCtx = new AudioCtx();
-  const source = audioCtx.createMediaStreamSource(stream);
+  const mediaSource = audioCtx.createMediaStreamSource(stream);
   const analyser = audioCtx.createAnalyser();
   analyser.fftSize = 1024;
-  source.connect(analyser);  // analyser only; playback comes from <audio>
+  mediaSource.connect(analyser);  // analyser only; playback comes from <audio>
   drawWaveform(analyser);
 
   const resume = () => { audioCtx.resume(); botAudio.play().catch(() => {}); };
-  botAudio.play().then(() => { setStatus("🎙 Listening"); }).catch(() => {
+  botAudio.play().then(() => { setStatus("🎙 Listening"); }).catch((e) => {
     // Autoplay blocked - surface a one-tap enable button.
+    log("Autoplay blocked, waiting for user gesture", { error: describeError(e) });
     setStatus("");
     enableBtn.style.display = "inline-block";
     enableBtn.onclick = () => { resume(); enableBtn.style.display = "none";
       setStatus("🎙 Listening"); };
   });
+}
+
+// Some participant/track updates carry the track directly rather than via a
+// track-started event; check both so a missed event doesn't stall forever.
+function tryAttachFromParticipant(participant, source) {
+  if (audioAttached || !participant || participant.local) return;
+  const track = participant.tracks && participant.tracks.audio
+    && participant.tracks.audio.persistentTrack;
+  if (track) attachBotAudio(new MediaStream([track]), source);
 }
 
 // Daily's SDK rejects/emits errors as plain objects shaped like
@@ -98,27 +130,59 @@ async function start() {
     return;
   }
 
+  const timeoutId = setTimeout(() => {
+    if (audioAttached) return;
+    timedOut = true;
+    setStatus("Still connecting - taking longer than expected");
+    log("Timed out waiting for remote audio after " + JOIN_TIMEOUT_MS + "ms");
+  }, JOIN_TIMEOUT_MS);
+
   try {
+    setStatus("Connecting…");
+    log("Creating call object");
     // Headless call object: no Daily prebuilt UI (video tiles, chat,
     // participant list) is ever rendered - we drive everything ourselves,
     // same as the old raw-WebRTC client did against the SmallWebRTC bot.
     const call = DailyIframe.createCallObject();
 
     call.on("track-started", (event) => {
+      log("track-started", { local: event.participant && event.participant.local, kind: event.track.kind });
       if (!event.participant || event.participant.local) return;
       if (event.track.kind !== "audio") return;
-      attachBotAudio(new MediaStream([event.track]));
+      attachBotAudio(new MediaStream([event.track]), "track-started");
     });
 
-    call.on("left-meeting", () => setStatus("Disconnected"));
+    call.on("participant-joined", (event) => {
+      log("participant-joined", { local: event.participant.local });
+      tryAttachFromParticipant(event.participant, "participant-joined");
+    });
+
+    call.on("participant-updated", (event) => {
+      tryAttachFromParticipant(event.participant, "participant-updated");
+    });
+
+    call.on("left-meeting", () => { setStatus("Disconnected"); log("left-meeting"); });
     call.on("error", (e) => {
       console.error("Daily call error:", e);
+      log("error event", { error: describeError(e) });
       setStatus("Error: " + describeError(e));
     });
 
+    log("Joining room");
     await call.join({ url: ROOM_URL, videoSource: false });
+    log("join() resolved");
+    if (!timedOut) setStatus("Joined - waiting for the bot's audio…");
+
+    // Cover the case where the bot was already in the room with a live
+    // audio track before our listeners were attached to it specifically
+    // (join() resolves with the participants already present at that time).
+    const existing = call.participants ? call.participants() : null;
+    if (existing) {
+      Object.values(existing).forEach((p) => tryAttachFromParticipant(p, "join-participants"));
+    }
   } catch (err) {
     console.error("Daily join failed:", err);
+    log("join() threw", { error: describeError(err) });
     setStatus("Error: " + describeError(err));
   }
 }
