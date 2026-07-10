@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; gap: 14px; }
+  #wave { width: 100%; max-width: 640px; height: 160px; }
+  #status { font-size: 14px; color: #6b7280; letter-spacing: .02em; }
+  #enable { display: none; padding: 10px 18px; font-size: 15px; cursor: pointer;
+    border: 0; border-radius: 999px; background: #2563eb; color: #fff; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="wave" width="640" height="160"></canvas>
+    <div id="status">Connecting…</div>
+    <button id="enable">Tap to enable audio</button>
+    <audio id="botAudio" autoplay></audio>
+  </div>
+<script>
+// Room URL is injected server-side (see utils/streamlit_utils.py) as a JSON
+// string literal, so it's safely escaped for embedding here.
+const ROOM_URL = __ROOM_URL_JSON__;
+
+const statusEl = document.getElementById("status");
+const enableBtn = document.getElementById("enable");
+const botAudio = document.getElementById("botAudio");
+const canvas = document.getElementById("wave");
+const ctx = canvas.getContext("2d");
+
+function setStatus(t) { statusEl.textContent = t; }
+
+// Draw a live waveform of whatever audio is on the given analyser. When the bot
+// is silent the line is flat; when it speaks the line moves.
+function drawWaveform(analyser) {
+  const buf = new Uint8Array(analyser.fftSize);
+  function frame() {
+    requestAnimationFrame(frame);
+    analyser.getByteTimeDomainData(buf);
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#2563eb";
+    ctx.beginPath();
+    const slice = w / buf.length;
+    for (let i = 0; i < buf.length; i++) {
+      const y = (buf[i] / 128.0) * (h / 2);
+      const x = i * slice;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  frame();
+}
+
+function attachBotAudio(stream) {
+  // Attach to an <audio> element (required for the audio to actually play)
+  // and also tap it with an analyser for the waveform.
+  botAudio.srcObject = stream;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioCtx();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);  // analyser only; playback comes from <audio>
+  drawWaveform(analyser);
+
+  const resume = () => { audioCtx.resume(); botAudio.play().catch(() => {}); };
+  botAudio.play().then(() => { setStatus("🎙 Listening"); }).catch(() => {
+    // Autoplay blocked - surface a one-tap enable button.
+    setStatus("");
+    enableBtn.style.display = "inline-block";
+    enableBtn.onclick = () => { resume(); enableBtn.style.display = "none";
+      setStatus("🎙 Listening"); };
+  });
+}
+
+async function start() {
+  try {
+    // Headless call object: no Daily prebuilt UI (video tiles, chat,
+    // participant list) is ever rendered - we drive everything ourselves,
+    // same as the old raw-WebRTC client did against the SmallWebRTC bot.
+    const call = DailyIframe.createCallObject();
+
+    call.on("track-started", (event) => {
+      if (!event.participant || event.participant.local) return;
+      if (event.track.kind !== "audio") return;
+      attachBotAudio(new MediaStream([event.track]));
+    });
+
+    call.on("left-meeting", () => setStatus("Disconnected"));
+    call.on("error", (e) => setStatus("Error: " + (e && e.errorMsg ? e.errorMsg : "connection failed")));
+
+    await call.join({ url: ROOM_URL, videoSource: false });
+  } catch (err) {
+    setStatus("Error: " + err.message);
+  }
+}
+
+start();
+</script>
+</body>
+</html>

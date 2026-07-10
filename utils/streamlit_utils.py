@@ -1,7 +1,30 @@
-import streamlit as st
+import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+
+import streamlit as st
+
 from utils.voice_bot_launcher import finish_voice_handover
+
+DAILY_CLIENT_TEMPLATE_PATH = Path(__file__).resolve().parent / "daily_client_template.html"
+
+
+def render_voice_client(room_url: str, height: int = 240) -> None:
+    """Embed a minimal, custom voice-call UI for the given Daily room.
+
+    Embedding the raw Daily room URL in an iframe pulls in Daily's full
+    prebuilt UI (video tiles, chat, participant list, camera/mic controls),
+    which is a lot of clutter for a bot that's audio-only. This instead
+    injects the room URL into a small HTML/JS page (see
+    utils/daily_client_template.html) that joins the room headlessly via the
+    Daily JS SDK and renders just a waveform + status line, matching the
+    minimal client the app used before moving to Daily.
+    """
+    template = DAILY_CLIENT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    html = template.replace("__ROOM_URL_JSON__", json.dumps(room_url))
+    st.iframe(html, height=height)
+
 
 def render_timer_panel() -> None:
     if st.session_state.supervisor_handover_finished:

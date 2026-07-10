@@ -12,7 +12,7 @@ from utils.voice_bot_launcher import (
     finish_voice_handover,
     initialise_voice_bot_page,
 )
-from utils.streamlit_utils import render_timer_panel, computer_screen_display
+from utils.streamlit_utils import render_timer_panel, computer_screen_display, render_voice_client
 
 # The voice bot runs as a SEPARATE process (a Pipecat + Daily server), not
 # inside Streamlit. This page launches that process, has it create a Daily
@@ -73,7 +73,7 @@ if st.session_state.conversation_active:
         )
         st.session_state.conversation_active = False
     else:
-        st.iframe(st.session_state.bot_room_url, height=500)
+        render_voice_client(st.session_state.bot_room_url)
         st.caption(
             "Allow microphone access when prompted, then just speak. "
         )

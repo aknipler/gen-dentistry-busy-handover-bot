@@ -1,5 +1,7 @@
 # Rapid Handover to a Busy Clinical Supervisor
 
+Note: This project won't work locally on a Windows machine because of the pipecat[daily] requirement. It works fine on Linux and Mac, and on Streamlit Community Cloud.
+
 A Streamlit teaching activity for dental students. Students play a clinician
 who must interview a simulated patient, then hand the case over to a busy
 supervisor voice bot under time pressure, and finally receive AI-generated
