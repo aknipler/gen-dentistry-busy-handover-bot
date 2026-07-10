@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import subprocess
@@ -19,12 +20,19 @@ from utils.mongodb import get_latest_transcript_since
 # loopback configured, so uvicorn's bind fails with
 # "[Errno 99] cannot assign requested address". Use the IPv4 loopback
 # explicitly so this works both locally (Windows) and on Streamlit Cloud.
+#
+# This host/port is only ever dialed from within this same container: by
+# this launcher (to request a Daily room and to send /hangup) and by the bot
+# process itself. The student's browser never touches it - it's handed a
+# Daily room URL instead, since Streamlit Community Cloud doesn't expose
+# subprocess ports to the internet (only Streamlit's own port is proxied).
 BOT_HOST = "127.0.0.1"
 BOT_SCRIPT = Path(__file__).resolve().parent / "voice_bot.py"
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 
 SESSION_KEY_BOT_PROCESS = "bot_process"
 SESSION_KEY_BOT_PORT = "bot_port"
+SESSION_KEY_BOT_ROOM_URL = "bot_room_url"
 SESSION_KEY_BOT_LOG_PATH = "bot_log_path"
 SESSION_KEY_BOT_LOG_FILE = "bot_log_file"
 SESSION_KEY_BOT_CONFIG = "bot_config"
@@ -129,6 +137,7 @@ def stop_voice_bot_process() -> None:
 
     st.session_state[SESSION_KEY_BOT_PROCESS] = None
     st.session_state[SESSION_KEY_BOT_PORT] = None
+    st.session_state[SESSION_KEY_BOT_ROOM_URL] = None
     st.session_state[SESSION_KEY_BOT_CONFIG] = None
     st.session_state[SESSION_KEY_BOT_LOG_FILE] = None
 
@@ -246,6 +255,9 @@ def _start_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
     env["PYTHONUNBUFFERED"] = "1"  # stream logs live instead of buffering to the log file
     env["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
     env["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+    # Pipecat's Daily transport/runner reads the key from DAILY_API_KEY
+    # specifically, regardless of what it's named in secrets.toml.
+    env["DAILY_API_KEY"] = st.secrets["DAILY_CO_API_KEY"]
     env["BOT_MODEL"] = config["model"]
     env["BOT_VOICE"] = stage_config["voice"]
     env["PROMPT_PATH"] = stage_config["prompt_path"]
@@ -264,7 +276,7 @@ def _start_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
             sys.executable,
             str(BOT_SCRIPT),
             "-t",
-            "webrtc",
+            "daily",
             "--host",
             BOT_HOST,
             "--port",
@@ -280,23 +292,7 @@ def _start_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
     return process
 
 
-def _wait_for_voice_bot_ready(port: int, timeout_seconds: int = 45) -> None:
-    url = f"http://{BOT_HOST}:{port}/simple"
-    deadline = time.monotonic() + timeout_seconds
-    last_error = None
-
-    while time.monotonic() < deadline:
-        process = st.session_state.get(SESSION_KEY_BOT_PROCESS)
-        if process is not None and process.poll() is not None:
-            break
-        try:
-            with urllib.request.urlopen(url, timeout=2) as response:
-                if response.status == 200:
-                    return
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            last_error = exc
-            time.sleep(0.25)
-
+def _raise_unreachable(url: str, last_error: Exception | None) -> None:
     log_path = st.session_state.get(SESSION_KEY_BOT_LOG_PATH)
     log_excerpt = ""
     if log_path:
@@ -312,9 +308,75 @@ def _wait_for_voice_bot_ready(port: int, timeout_seconds: int = 45) -> None:
     if log_excerpt:
         message = f"{message}\nRecent bot log output:\n{log_excerpt}"
 
-    raise RuntimeError(
-        message
-    ) from last_error
+    raise RuntimeError(message) from last_error
+
+
+def _wait_for_voice_bot_ready(port: int, timeout_seconds: int = 45) -> None:
+    """Wait for the bot's local FastAPI server to come up.
+
+    Polls /status (always mounted, regardless of transport) rather than
+    anything Daily-specific - this only confirms the process/server is alive,
+    not that a Daily room has been created yet (that's a separate step, see
+    _request_daily_room).
+    """
+    url = f"http://{BOT_HOST}:{port}/status"
+    deadline = time.monotonic() + timeout_seconds
+    last_error = None
+
+    while time.monotonic() < deadline:
+        process = st.session_state.get(SESSION_KEY_BOT_PROCESS)
+        if process is not None and process.poll() is not None:
+            break
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status == 200:
+                    return
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            time.sleep(0.25)
+
+    _raise_unreachable(url, last_error)
+
+
+def _request_daily_room(port: int, timeout_seconds: float = 15.0) -> str:
+    """Ask the bot process to create a Daily room and join it, returning the room URL.
+
+    Calls the bot's own /start endpoint (POST, server-to-server over
+    localhost) rather than having the browser hit it, since the browser can't
+    reach this container's ports on Streamlit Community Cloud. The bot joins
+    the room as a background task; the room is created and returned
+    synchronously, so the student's browser can be pointed at it immediately
+    even if the bot is still connecting.
+    """
+    url = f"http://{BOT_HOST}:{port}/start"
+    payload = json.dumps(
+        {
+            "transport": "daily",
+            "createDailyRoom": True,
+            "dailyRoomProperties": {
+                # Audio-only roleplay - skip the camera permission prompt and
+                # cap the room to the student + bot.
+                "start_video_off": True,
+                "max_participants": 2,
+            },
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        url=url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            body = json.loads(response.read())
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        _raise_unreachable(url, exc)
+
+    room_url = body.get("dailyRoom")
+    if not room_url:
+        raise RuntimeError(f"Bot did not return a Daily room URL. Response: {body}")
+    return room_url
 
 
 def ensure_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.Popen:
@@ -330,7 +392,9 @@ def ensure_voice_bot_process(stage: str = "supervisor_handover") -> subprocess.P
 
     process = _start_voice_bot_process(stage=stage)
     try:
-        _wait_for_voice_bot_ready(st.session_state[SESSION_KEY_BOT_PORT])
+        port = st.session_state[SESSION_KEY_BOT_PORT]
+        _wait_for_voice_bot_ready(port)
+        st.session_state[SESSION_KEY_BOT_ROOM_URL] = _request_daily_room(port)
         return process
     except RuntimeError:
         stop_voice_bot_process()

@@ -5,7 +5,11 @@ python-dotenv
 streamlit>=1.40.2
 llama-index==0.14.15
 anthropic>=0.116.0
-pipecat-ai[webrtc]>=1.4.0
+pipecat-ai>=1.4.0
+# daily-python has no Windows wheel (Linux/macOS only); skip it on Windows dev
+# machines so this file still installs there. Streamlit Community Cloud's
+# containers are Linux, so it installs normally on the deployed app.
+daily-python>=0.29.0,<1; sys_platform != "win32"
 pipecat-ai-prebuilt>=1.0.3
 faster-whisper>=1.2.1
 kokoro-onnx>=0.4.7

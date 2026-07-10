@@ -10,7 +10,13 @@ dependencies = [
     "fastapi>=0.139.0",
     "faster-whisper>=1.2.1",
     "kokoro-onnx>=0.5.0",
-    "pipecat-ai[webrtc]>=1.4.0",
+    "pipecat-ai>=1.4.0",
+    # daily-python (pulled in by pipecat-ai's "daily" extra) only ships Linux
+    # and macOS wheels - there is no Windows build. Marked platform-conditional
+    # so `uv sync`/`pip install` still succeeds on Windows dev machines; the
+    # voice bot subprocess itself can only run where this resolves (Streamlit
+    # Community Cloud's containers are Linux, so it installs fine there).
+    "daily-python>=0.29.0,<1; sys_platform != 'win32'",
     "pipecat-ai-prebuilt>=1.0.3",
     "pymongo>=4.17.0",
     "soundfile>=0.14.0",

@@ -1,10 +1,16 @@
 """Generic Pipecat voice bot, reused across roleplay stages.
 
-This runs as its own process (a FastAPI + SmallWebRTC server), rather than inside
-Streamlit. The student's browser connects to it directly over WebRTC, which is
-the only way to reach the microphone. Streamlit (see utils/voice_session.py)
-launches this process per stage and embeds a minimal client UI (served at
-http://<host>:<port>/simple).
+This runs as its own process (a FastAPI + Daily server), rather than inside
+Streamlit. The student's browser connects directly to a Daily room to reach
+the microphone - Daily hosts the actual WebRTC media/SFU infrastructure, so
+the browser never needs to reach this process or this container over the
+network (only Streamlit's own server-to-server calls to localhost do, e.g.
+to request a room and to send /hangup). This is required because Streamlit
+Community Cloud only exposes Streamlit's own port to the internet; a
+self-hosted WebRTC transport (SmallWebRTC/aiortc) bound to a subprocess port
+is unreachable from the student's browser there. Streamlit (see
+utils/voice_bot_launcher.py) launches this process per stage, requests a
+Daily room from it, and embeds that room's URL.
 
 This script has no stage-specific knowledge (no "supervisor" or "patient"
 wording) - which prompt to use, which Mongo collection to save to, and who the
@@ -20,7 +26,7 @@ every voice roleplay stage:
     MONGODB_CONNECTION_STRING  - if set, the transcript is saved on hangup
     MONGODB_DATABASE_NAME      - database to write the transcript into
 
-Pipeline: WebRTC in -> Whisper STT (local) -> Claude -> Kokoro TTS -> WebRTC out.
+Pipeline: Daily in -> Whisper STT (local) -> Claude -> Kokoro TTS -> Daily out.
 Turn-taking uses Silero VAD + Smart Turn v3, both configured on the user
 aggregator (that is where they live in Pipecat 1.4.x).
 
@@ -61,12 +67,20 @@ from pipecat.services.openai.stt import OpenAIRealtimeSTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.transcriptions.language import Language
-from pipecat.transports.base_transport import BaseTransport, TransportParams
+from pipecat.transports.base_transport import BaseTransport
+from pipecat.transports.daily.transport import DailyParams
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 load_dotenv(override=True)
+
+# .env/secrets.toml name the key DAILY_CO_API_KEY (to disambiguate from other
+# services' API keys); pipecat's Daily transport/runner reads DAILY_API_KEY
+# specifically. The launcher already sets DAILY_API_KEY directly when
+# spawning this as a subprocess - this fallback only matters when running
+# this file directly (e.g. `python utils/voice_bot.py -t daily`) for testing.
+os.environ.setdefault("DAILY_API_KEY", os.environ.get("DAILY_CO_API_KEY", ""))
 
 
 # --- Performance Instrumentation ---
@@ -97,44 +111,12 @@ TRANSCRIPT_COLLECTION = os.environ.get("TRANSCRIPT_COLLECTION", "voice_transcrip
 
 
 transport_params = {
-    "webrtc": lambda: TransportParams(
+    "daily": lambda: DailyParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
+        camera_out_enabled=False,
     ),
 }
-
-
-# --- Minimal browser client -------------------------------------------------
-# The Pipecat runner ships a full-featured prebuilt UI at /client/. We don't want
-# all its controls, so we register our own bare-bones page at /simple.
-SIMPLE_CLIENT_HTML_PATH = Path(__file__).resolve().parent / "simple_bot_client.html"
-SIMPLE_CLIENT_HTML_FALLBACK = """<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-<body style="font-family: system-ui, sans-serif; padding: 16px;">
-  <p>The embedded voice client failed to load from disk.</p>
-  <p>Expected file: utils/simple_bot_client.html</p>
-</body>
-</html>
-"""
-
-
-def _register_simple_client() -> None:
-    """Serve the minimal client at /simple on the runner's FastAPI app."""
-    from fastapi.responses import FileResponse, HTMLResponse
-
-    from pipecat.runner.run import app
-
-    @app.get("/simple", include_in_schema=False)
-    async def simple_client():
-        if SIMPLE_CLIENT_HTML_PATH.exists():
-            return FileResponse(SIMPLE_CLIENT_HTML_PATH)
-
-        logger.error(f"Simple client HTML not found at {SIMPLE_CLIENT_HTML_PATH}")
-        return HTMLResponse(SIMPLE_CLIENT_HTML_FALLBACK, status_code=500)
-
-
-_register_simple_client()
 
 
 # --- Transcript saving ------------------------------------------------------

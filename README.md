@@ -32,7 +32,6 @@ pages/
 utils/
 ├── voice_bot.py                     # The Pipecat bot itself (runs as its own process)
 ├── voice_bot_launcher.py            # Starts/stops/monitors the bot process from Streamlit
-├── simple_bot_client.html           # Minimal WebRTC client embedded via <iframe>
 ├── streamlit_utils.py               # Shared UI helpers (timer panel, patient chart display)
 └── mongodb.py                       # Transcript + identifier persistence
 prompts/
@@ -58,8 +57,10 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Requires Python with access to a microphone-capable browser for testing
-(voice bots use WebRTC).
+Requires Python with access to a microphone-capable browser for testing.
+Voice bots connect the student's browser to a Daily room (see Secrets below);
+this is what makes them reachable when hosted on Streamlit Community Cloud,
+which does not expose subprocess ports to the internet.
 
 ### 2. Secrets
 
@@ -68,6 +69,7 @@ Create `.streamlit/secrets.toml`:
 ```toml
 ANTHROPIC_API_KEY = "your_anthropic_api_key"
 OPENAI_API_KEY = "your_openai_api_key"
+DAILY_CO_API_KEY = "your_daily_co_api_key"
 MONGODB_CONNECTION_STRING = "your_mongodb_connection_string"
 MONGODB_DATABASE_NAME = "your_database_name"
 ```
@@ -76,6 +78,9 @@ MONGODB_DATABASE_NAME = "your_database_name"
   feedback generation.
 - **OpenAI** powers realtime speech-to-text and text-to-speech for the voice
   bots.
+- **Daily** hosts the WebRTC room each voice bot session connects the
+  student's browser and the bot to (get a key at
+  [dashboard.daily.co](https://dashboard.daily.co)).
 - **MongoDB** stores valid student identifiers and every stage's transcript.
 
 ### 3. Student identifiers

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from Home import setup
 from utils.mongodb import get_latest_transcript_since
 from utils.voice_bot_launcher import (
-    BOT_HOST,
     ensure_voice_bot_process,
     request_voice_bot_hangup_async,
     stop_voice_bot_process,
@@ -14,9 +13,10 @@ from utils.voice_bot_launcher import (
 )
 from utils.streamlit_utils import render_timer_panel
 
-# The voice bot runs as a SEPARATE process (a Pipecat WebRTC server), not inside
-# Streamlit. The browser connects to it directly to reach the microphone; this
-# page just launches that process and embeds its prebuilt client UI.
+# The voice bot runs as a SEPARATE process (a Pipecat + Daily server), not
+# inside Streamlit. This page launches that process, has it create a Daily
+# room, and embeds that room's URL - the student's browser connects to Daily
+# directly (never to this container) to reach the microphone.
 
 
 client = setup()
@@ -85,8 +85,7 @@ if st.session_state.conversation_active:
         )
         st.session_state.conversation_active = False
     else:
-        client_url = f"http://{BOT_HOST}:{st.session_state.bot_port}/simple"
-        st.iframe(client_url, height=240)
+        st.iframe(st.session_state.bot_room_url, height=500)
         st.caption(
             "Allow microphone access when prompted, then just speak. The timer will start when you press start Voice Chat. "
         )
