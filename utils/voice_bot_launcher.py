@@ -14,7 +14,12 @@ import streamlit as st
 
 from utils.mongodb import get_latest_transcript_since
 
-BOT_HOST = "localhost"
+# "localhost" resolves to the IPv6 loopback (::1) first on many Linux
+# containers, including Streamlit Community Cloud - which don't have IPv6
+# loopback configured, so uvicorn's bind fails with
+# "[Errno 99] cannot assign requested address". Use the IPv4 loopback
+# explicitly so this works both locally (Windows) and on Streamlit Cloud.
+BOT_HOST = "127.0.0.1"
 BOT_SCRIPT = Path(__file__).resolve().parent / "voice_bot.py"
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 
