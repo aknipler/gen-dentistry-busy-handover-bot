@@ -43,8 +43,8 @@ computer_screen_display("patient_medical_history")
 
 
 st.markdown(
-    "When you click **Start Voice Chat** the bot will take 10-15 seconds to load. The first response "
-    "from the bot may be slow, but after that, the conversation should flow. Using your "
+    "When you click **Start Voice Chat** the bot will take 10-15 seconds to load. Scroll down if you can't "
+    "see it. The first response from the bot may be slow, but after that, the conversation should flow. Using your "
     "microphone, conduct your patient assessment with the bot. Click **Finish Conversation** when done."
 )
 
