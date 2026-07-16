@@ -30,8 +30,7 @@ def setup():
         st.session_state["feedback_prompt"] = feedback_prompt
 
     if "patient_medical_history" not in st.session_state:
-        with open("./prompts/patient_medical_history.txt", "r", encoding="utf-8") as file:
-            patient_medical_history = file.read()
+        patient_medical_history = "prompts/patient_medical_history_form.pdf"
 
         st.session_state["patient_medical_history"] = patient_medical_history
 
@@ -106,7 +105,8 @@ def init_page():
     """
     You are a student clinician in a busy Dental Teaching Clinic. You are seeing a patient who previously had a comprehensive examination with another student clinician. You must assess your patient and communicate relevant information to your clinical supervisor, to get approval to commence treatment.
     The clinic is running behind schedule, and your supervisor is assisting several other students. You will have a limited opportunity to provide a briefing before the supervisor moves on to another patient.
-    This activity is designed to help you practise gathering relevant information, identifying key clinical issues, and delivering a clear and concise handover under realistic time pressures.
+    This activity is designed to help you practise gathering relevant information, identifying key clinical issues, and delivering a clear and concise handover under realistic time pressures. \n
+    **Disclaimer: This is experimental and may not work perfectly, so apply your clinical judgement and common sense to the interactions and feedback. If you have any questions or concerns, please contact your supervisor.**
     """
     )
 
@@ -140,7 +140,7 @@ def init_page():
         "2. In the Patient Interaction - GPT tab, conduct a patient assessment. Only when you are finished the conversation click the `finish` button. You will not be able to undo this submission.\n"
         "3. In the Supervisor Handover - GPT tab, complete the patient handover within the time limit provided.\n"
         "4. In the Feedback - GPT tab, review your performance. If you have any additional questions about your feedback or performance, please contact your supervisor.\n"
-        "\nNote: Please ensure you have a stable internet connection to prevent any issues from occurring."
+        "\n**Note: Please ensure you have a stable internet connection, a quiet environment and a suitable microphone to prevent any issues from occurring.**"
     )
 
     # Add identifier input after welcome message

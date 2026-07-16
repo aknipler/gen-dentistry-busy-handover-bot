@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from utils.voice_bot_launcher import finish_voice_handover
 
 def render_timer_panel() -> None:
@@ -18,6 +19,25 @@ def render_timer_panel() -> None:
 
     if st.session_state.conversation_active and remaining <= 0:
         finish_voice_handover(stage="supervisor_handover", trigger="timer")
+        st.rerun()
+
+
+def enforce_max_duration(stage: str, started_at_utc, max_seconds: float) -> None:
+    """End a voice bot session once it's been active for max_seconds - no UI shown.
+
+    Unlike render_timer_panel (supervisor_handover's visible countdown, which
+    also enforces its own limit), this is for stages that need a hard cap on
+    usage but shouldn't display a timer to the student. Call this on every
+    rerun while the conversation is active (the caller is responsible for
+    triggering those reruns - see the commented-out rerun loop pattern in
+    pages/2_2._Supervisor_Handover_-_GPT.py).
+    """
+    if not st.session_state.conversation_active or started_at_utc is None:
+        return
+
+    elapsed = (datetime.now(timezone.utc) - started_at_utc).total_seconds()
+    if elapsed >= max_seconds:
+        finish_voice_handover(stage=stage, trigger="timer")
         st.rerun()
 
 
@@ -87,5 +107,15 @@ def computer_screen_display(content_key: str) -> None:
 
     # 3. Instantiate the standard Streamlit container layout component
     with st.container(height=380, border=True, key="computer_screen"):
-        st.markdown("## 🖥️ Patient Medical History Database")
-        st.write(str(st.session_state.get(content_key, "No medical history provided.")))
+        st.markdown("## Patient Medical History Database")
+        content = st.session_state.get(content_key)
+        pdf_path = Path(content) if content else None
+        if pdf_path is not None and pdf_path.is_file():
+            # Not st.iframe(): Chrome refuses to render its PDF viewer inside
+            # a sandboxed iframe (which st.iframe always applies), regardless
+            # of how the PDF is served - it silently shows a broken-file icon
+            # instead. st.pdf uses its own dedicated viewer component, not a
+            # generic sandboxed iframe, so it isn't subject to that.
+            st.pdf(pdf_path, height=340)
+        else:
+            st.write(content or "No medical history provided.")

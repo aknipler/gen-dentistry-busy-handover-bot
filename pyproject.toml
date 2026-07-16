@@ -20,7 +20,10 @@ dependencies = [
     "pipecat-ai-prebuilt>=1.0.3",
     "pymongo>=4.17.0",
     "soundfile>=0.14.0",
-    "streamlit>=1.58.0",
+    # st.pdf's viewer - PDFs can't be shown via st.iframe: Chrome refuses to
+    # render its PDF viewer inside a sandboxed iframe (which st.iframe always
+    # uses), regardless of src/srcdoc/local-file details.
+    "streamlit[pdf]>=1.58.0",
     "websockets>=16.0",
     "loguru>=0.7.3",
 ]

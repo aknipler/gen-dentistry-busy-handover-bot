@@ -2,7 +2,10 @@
 openai==2.22.0
 pymongo>=4.7
 python-dotenv
-streamlit>=1.40.2
+# st.pdf's viewer - PDFs can't be shown via st.iframe: Chrome refuses to
+# render its PDF viewer inside a sandboxed iframe (which st.iframe always
+# uses), regardless of src/srcdoc/local-file details.
+streamlit[pdf]>=1.40.2
 llama-index==0.14.15
 anthropic>=0.116.0
 pipecat-ai>=1.4.0
