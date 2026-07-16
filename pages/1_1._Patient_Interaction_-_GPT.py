@@ -14,7 +14,7 @@ from utils.voice_bot_launcher import (
 )
 from utils.streamlit_utils import render_timer_panel, computer_screen_display, enforce_max_duration
 
-PATIENT_INTERACTION_MAX_SECONDS = 25 # 8 * 60
+PATIENT_INTERACTION_MAX_SECONDS =  8 * 60
 
 # The voice bot runs as a SEPARATE process (a Pipecat + Daily server), not
 # inside Streamlit. This page launches that process, has it create a Daily
