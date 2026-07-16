@@ -2,6 +2,7 @@ import streamlit as st
 from anthropic import Anthropic
 from utils.mongodb import check_identifier
 from utils.voice_bot_launcher import ensure_voice_bot_process, is_voice_bot_running
+from utils.streamlit_utils import initialise_streamlit_session_state
 
 def is_identifier_valid():
     identifier = st.session_state.get("user_identifier", "").strip()
@@ -11,76 +12,8 @@ def is_identifier_valid():
 
 def setup():
 
-    if "patient_interaction_prompt" not in st.session_state: 
-        with open("./prompts/patient_interaction_prompt.txt", "r", encoding="utf-8") as file:
-            patient_interaction_prompt = file.read()
-
-        st.session_state["patient_interaction_prompt"] = patient_interaction_prompt
-        
-    if "supervisor_handover_prompt" not in st.session_state: 
-        with open("./prompts/supervisor_handover_prompt.txt", "r", encoding="utf-8") as file:
-            supervisor_handover_prompt = file.read()
-
-        st.session_state["supervisor_handover_prompt"] = supervisor_handover_prompt
-        
-    if "feedback_prompt" not in st.session_state: 
-        with open("./prompts/feedback_prompt.txt", "r", encoding="utf-8") as file:
-            feedback_prompt = file.read()
-
-        st.session_state["feedback_prompt"] = feedback_prompt
-
-    if "patient_medical_history" not in st.session_state:
-        patient_medical_history = "prompts/patient_medical_history_form.pdf"
-
-        st.session_state["patient_medical_history"] = patient_medical_history
-
-    if "model" not in st.session_state:
-        st.session_state["model"] = "claude-haiku-4-5"
-        
-    if "max_tokens" not in st.session_state:
-        st.session_state["max_tokens"] = 1024
-
-    if "patient_interaction_chat_history" not in st.session_state:
-        st.session_state["patient_interaction_chat_history"] = []
-        
-    if "supervisor_handover_chat_history" not in st.session_state:
-        st.session_state["supervisor_handover_chat_history"] = []
-        
-    if "feedback_chat_history" not in st.session_state:
-        st.session_state["feedback_chat_history"] = []
-
-    if "response_counter" not in st.session_state:
-        st.session_state["response_counter"] = 0
-
-    if "mongodb_uri" not in st.session_state:
-        st.session_state["mongodb_uri"] = st.secrets["MONGODB_CONNECTION_STRING"]
-
-    if "mongodb_database_name" not in st.session_state:
-        st.session_state["mongodb_database_name"] = st.secrets["MONGODB_DATABASE_NAME"]
-
-    if "patient_interaction_finished" not in st.session_state:
-        st.session_state["patient_interaction_finished"] = False
-
-    if "supervisor_handover_finished" not in st.session_state:
-        st.session_state["supervisor_handover_finished"] = False
-
-    if "session_id" not in st.session_state:
-        st.session_state["session_id"] = None
-
-    if "patient_transcript_id" not in st.session_state:
-        st.session_state["patient_transcript_id"] = None
-
-    if "supervisor_transcript_id" not in st.session_state:
-        st.session_state["supervisor_transcript_id"] = None
-
-    if "user_identifier" not in st.session_state:
-        st.session_state["user_identifier"] = ""
-
-    if "initialised_pages" not in st.session_state:
-        st.session_state["initialised_pages"] = set()
-
-    if "patient_interaction_started_at_utc" not in st.session_state:
-        st.session_state["patient_interaction_started_at_utc"] = None
+    # Initialize Streamlit session state variables (there are a lot!)
+    initialise_streamlit_session_state()
 
     # Set up Anthropic API client
     client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
@@ -89,17 +22,7 @@ def setup():
 
 def init_page():
     setup()
-    # if "home_prewarm_started" not in st.session_state:
-    #     st.session_state["home_prewarm_started"] = False
-
-    # if (not st.session_state["home_prewarm_started"]) or (not is_voice_bot_running()):
-    #     try:
-    #         st.session_state["bot_process"] = ensure_voice_bot_process()
-    #         st.session_state["home_prewarm_started"] = True
-    #     except RuntimeError as exc:
-    #         st.warning(str(exc))
-    #         st.session_state["home_prewarm_started"] = False
-
+    
     st.title("Rapid Handover to Busy Clinical Supervisor")
     st.markdown(
     """

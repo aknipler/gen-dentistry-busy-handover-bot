@@ -37,6 +37,7 @@ def enforce_max_duration(stage: str, started_at_utc, max_seconds: float) -> None
 
     elapsed = (datetime.now(timezone.utc) - started_at_utc).total_seconds()
     if elapsed >= max_seconds:
+        st.session_state.patient_interaction_max_time_reached = True
         finish_voice_handover(stage=stage, trigger="timer")
         st.rerun()
 
@@ -119,3 +120,80 @@ def computer_screen_display(content_key: str) -> None:
             st.pdf(pdf_path, height=340)
         else:
             st.write(content or "No medical history provided.")
+
+
+def initialise_streamlit_session_state() -> None:
+    
+    if "patient_interaction_prompt" not in st.session_state: 
+        with open("./prompts/patient_interaction_prompt.txt", "r", encoding="utf-8") as file:
+            patient_interaction_prompt = file.read()
+
+        st.session_state["patient_interaction_prompt"] = patient_interaction_prompt
+        
+    if "supervisor_handover_prompt" not in st.session_state: 
+        with open("./prompts/supervisor_handover_prompt.txt", "r", encoding="utf-8") as file:
+            supervisor_handover_prompt = file.read()
+
+        st.session_state["supervisor_handover_prompt"] = supervisor_handover_prompt
+        
+    if "feedback_prompt" not in st.session_state: 
+        with open("./prompts/feedback_prompt.txt", "r", encoding="utf-8") as file:
+            feedback_prompt = file.read()
+
+        st.session_state["feedback_prompt"] = feedback_prompt
+
+    if "patient_medical_history" not in st.session_state:
+        patient_medical_history = "prompts/patient_medical_history_form.pdf"
+
+        st.session_state["patient_medical_history"] = patient_medical_history
+
+    if "model" not in st.session_state:
+        st.session_state["model"] = "claude-haiku-4-5"
+        
+    if "max_tokens" not in st.session_state:
+        st.session_state["max_tokens"] = 1024
+
+    if "patient_interaction_chat_history" not in st.session_state:
+        st.session_state["patient_interaction_chat_history"] = []
+        
+    if "supervisor_handover_chat_history" not in st.session_state:
+        st.session_state["supervisor_handover_chat_history"] = []
+        
+    if "feedback_chat_history" not in st.session_state:
+        st.session_state["feedback_chat_history"] = []
+
+    if "response_counter" not in st.session_state:
+        st.session_state["response_counter"] = 0
+
+    if "mongodb_uri" not in st.session_state:
+        st.session_state["mongodb_uri"] = st.secrets["MONGODB_CONNECTION_STRING"]
+
+    if "mongodb_database_name" not in st.session_state:
+        st.session_state["mongodb_database_name"] = st.secrets["MONGODB_DATABASE_NAME"]
+
+    if "patient_interaction_max_time_reached" not in st.session_state:
+        st.session_state["patient_interaction_max_time_reached"] = False
+
+    if "patient_interaction_finished" not in st.session_state:
+        st.session_state["patient_interaction_finished"] = False
+
+    if "supervisor_handover_finished" not in st.session_state:
+        st.session_state["supervisor_handover_finished"] = False
+
+    if "session_id" not in st.session_state:
+        st.session_state["session_id"] = None
+
+    if "patient_transcript_id" not in st.session_state:
+        st.session_state["patient_transcript_id"] = None
+
+    if "supervisor_transcript_id" not in st.session_state:
+        st.session_state["supervisor_transcript_id"] = None
+
+    if "user_identifier" not in st.session_state:
+        st.session_state["user_identifier"] = ""
+
+    if "initialised_pages" not in st.session_state:
+        st.session_state["initialised_pages"] = set()
+
+    if "patient_interaction_started_at_utc" not in st.session_state:
+        st.session_state["patient_interaction_started_at_utc"] = None
